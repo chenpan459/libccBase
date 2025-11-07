@@ -1,0 +1,226 @@
+
+future,翻译过来的意思就是未来、将来、前途、前程。
+
+在C++11中,使用future作为获取异步任务（在单独线程中启动的函数）的工具模块的名字 ,无疑是非常贴切,因为在异步任务中,其返回的结果就是在未来（异步任务执行完）需要获取的结果。
+
+在C++11中,头文件<future>包含了以下类的定义:
+    std::promise:主要用于在异步任务中存储值以进行异步获取
+    std::packaged_task:打包一个函数,存储其返回值以进行异步获取
+    std::future:等待被异步设置的值
+    std::shared_future:等待被异步设置的值(可能被其他的std::future所使用)
+    std::async:异步运行一个函数,并返回其结果的std::future
+    std::launch:指定std::async所使用的运行策略
+    std::future_status:指定在std::future和std::shared_future上的定时等待的结果
+
+std::packaged_task、std::async、std::promise等异步任务操作都会返回一个std::future对象给创建异步操作的创建者。
+然后创建者可以通过std::future对象查询、等待异步操作完成以及获取异步操作的返回值。
+第一次看future相关的内容时,std::packaged_task、std::async、std::promise如果说单独看一个很容易明白它的意思,但是看完所有之后,
+又觉得非常迷糊,它们好像不一样,好像又一样,但是区别在哪里又说不上来。
+所以我们先总结下std::packaged_task、std::async、std::promise每一个的基本使用方法,然后再总结它们的区别。
+
+
+
+1.1 std::future
+函数原型
+template< class T > class future;
+template< class T > class future<T&>;
+template<>          class future<void>;
+
+    std::future包含以下成员函数:
+    valid:检查future是否拥有共享状态
+    wait:等待future的结果变得可用
+    wait_for:等待future的结果,如果在指定的时间内仍然无法得到结果,则返回
+    wait_until:等待future的结果,如果已经到达指定的时间点仍然无法得到结果,则返回
+
+
+1.2 std::promise
+函数原型
+template< class R > class promise;
+template< class R > class promise<R&>;
+template<>          class promise<void>;
+    std::promise包含以下成员函数:
+    set_value:设置结果为指定值
+    set_value_at_thread_exit:设置结果为指定值,同时仅在线程退出时分发提醒
+    set_exception:设置结果为异常
+    set_exception_at_thread_exit:设置结果为异常,同时仅在线程退出时分发提醒
+    get_future:返回与std::promise相关的std::future
+promise,直译过来就是承诺,在C++11中,std::promise用于在子线程中设置值并通过std::future进行值的提取。
+我们来看一下下面这个简单的例子弄懂std::promise的用法
+#include <iostream>
+#include <thread>
+#include <future>
+// 将promise作为参数传递,并设置值为计算结果
+void sum(int a, int b , std::promise<int> promise)
+{
+    int res = a + b;
+    promise.set_value(res);
+}
+
+int main()
+{
+    // 声明一个promise
+    std::promise<int> sum_promise;
+    // 从promise中获取future
+    std::future<int> sum_future = sum_promise.get_future();
+    // 启动子线程
+    std::thread thread(sum, 1, 2, std::move(sum_promise));
+    // 通过future获取promise设置的值
+    std::cout << "result=" << sum_future.get() << std::endl;
+    thread.join();
+    return 0;
+}
+
+
+
+1.3 std::packaged_task
+函数原型
+template< class > class packaged_task;
+template< class R, class ...Args >
+class packaged_task<R(Args...)>;
+
+std::packaged_task的成员函数如下:
+    get_future:返回关联的future
+    operator():执行所包装函数
+    reset:重置,抛弃任何先前执行的存储结果
+    make_read_at_thread_exit:执行所包装的函数,结果只会在线程退出时就绪
+
+std::packaged_task是一个类模板,可以包装任何可调用的目标,比如函数、lambda、std::bind以及其他可调用的函数对象,
+这些函数对象可以同步调用也可以异步调用,其返回值以及异常值可存储在std::future对象的共享状态中。
+
+我们来看一下下面这个简单的例子弄懂std::packaged_task的用法
+#include <functional>
+#include <iostream>
+#include <thread>
+#include <future>
+#include <chrono>
+
+int sum(int a, int b)
+{
+    std::cout << "sum() start in thread " << std::this_thread::get_id() << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(3)); // 模拟耗时操作
+    int res = a + b;
+    std::cout << "sum() end in thread " << std::this_thread::get_id() << std::endl;
+    return res;
+
+}
+
+int main()
+{
+    // 同步调用
+    std::packaged_task<int(int, int)> sync_packaged_task(std::bind(sum, std::placeholders::_1, std::placeholders::_2));
+    std::future<int> sync_task_future = sync_packaged_task.get_future();
+    sync_packaged_task(1,5);
+    std::cout << "sync task = " << sync_task_future.get() << std::endl;
+    // 异步调用
+    std::packaged_task<int(int, int)> asyn_packaged_task(std::bind(sum, std::placeholders::_1, std::placeholders::_2));
+    std::future<int> asyn_task_future = asyn_packaged_task.get_future();
+    std::thread task_thread(std::move(asyn_packaged_task), 1, 5);
+    std::cout << "asyn task = " << asyn_task_future.get() << std::endl;
+    task_thread.join();
+    std::cout << "asyn task = " << asyn_task_future.get() << std::endl;
+    return 0;
+}
+编译：
+ g++ -std=c++11 packaget.cc -o packaged_task -pthread
+
+1.4 std::launch
+std::launch是一个枚举,
+enum class launch : /* unspecified */ {
+    async =    /* unspecified */,
+    deferred = /* unspecified */,
+    /* implementation-defined */
+};
+
+主要用于指定std::async所指定的任务运行策略,其中
+    std::launch::async:运行新线程,异步执行任务
+    std::launch::deferred:调用方线程上首次请求其结果时执行任务
+
+1.5 std::async
+函数原型
+template< class Function, class... Args>
+std::future<std::result_of_t<std::decay_t<Function>(std::decay_t<Args>...)>>
+    async( Function&& f, Args&&... args );
+template< class Function, class... Args>
+std::future<std::invoke_result_t<std::decay_t<Function>,
+                                              std::decay_t<Args>...>>
+    async( Function&& f, Args&&... args );
+
+std::async是一个函数模板,他可以异步的调用函数f,并且返回存储该函数结果的std::future对象。
+正如我们上一节的所述,std::packaged_task其实只是一个函数包装器,而std::async直接异步执行函数,而不需要再使用std::thread异步执行std::packaged_task。
+不过需要要注意的是,std::async不一定总是开启新的线程执行函数,不过可以指定std::launch::async来开启新的线程。
+
+我们来看一下下面这个简单的例子弄懂`std::async的用法
+#include <iostream>
+#include <thread>
+#include <future>
+
+int sum(int a, int b)
+{
+    int res = a + b;
+    return res;
+}
+
+int main()
+{
+    std::future<int> async_future = std::async(std::launch::async, sum, 1, 5);
+    async_future.wait();
+    std::cout << async_future.get() << std::endl;
+
+    return 0;
+}
+
+
+1.6 std::promise、std::packaged_task、std::async的区别
+经过上述对std::promise、std::packaged_task、std::async基本使用的介绍,最直观的感受就是
+    std::promise最底层,可以用于同步不同线程之间的消息
+    std::packaged_task主要是一个函数包装器,但是非常灵活,可以选择搭配std::thread进行异步处理
+    std::async使用最简单,封装程度最高,做的事情最多,但是灵活性较差
+
+我们可以使用std::promise实现std::packaged_task
+template <typename> class my_task;
+template <typename R, typename ...Args>
+class my_task<R(Args...)>
+{
+    std::function<R(Args...)> fn;
+    std::promise<R> pr;             // the promise of the result
+public:
+    template <typename ...Ts>
+    explicit my_task(Ts &&... ts) : fn(std::forward<Ts>(ts)...) { }
+
+    template <typename ...Ts>
+    void operator()(Ts &&... ts)
+    {
+        pr.set_value(fn(std::forward<Ts>(ts)...));  // fulfill the promise
+    }
+
+    std::future<R> get_future() { return pr.get_future(); }
+
+    // disable copy, default move
+};
+
+
+
+也可以使用std::packaged_task来实现std::async,简单的示例如下
+std::future<int> my_async(function<int(int i)> task, int i)
+{
+    std::packaged_task<int(int)> package{task};
+    std::future<int> f = package.get_future();
+
+    std::thread t(std::move(package), i);
+    t.detach();
+    return f;
+}
+
+int main()
+{    auto task = [](int i) { std::this_thread::sleep_for(std::chrono::seconds(5)); return i+100; };
+
+    std::future<int> f = my_async(task, 5);
+    std::cout << f.get() << std::endl;
+    return 0;
+}
+
+
+2 总结
+std::promise、std::packaged_task、std::async可以满足我们在多线程编程中异步获取结果的多样化需求,
+但是最核心的还是std::future,std::promise、std::packaged_task、std::async都是为std::future所服务,
+以保证我们可以获取异步任务的返回值。
