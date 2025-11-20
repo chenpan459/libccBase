@@ -251,12 +251,12 @@ int main() {
 
     try {
         TestBasicPubSub();
-        // TestMultipleTopics();
-        // TestPublishToAll();
-        // TestThreadSafety();
-        // TestUnsubscribe();
-        // TestTopicManagement();
-        // TestPerformance();
+        TestMultipleTopics();
+        TestPublishToAll();
+        TestThreadSafety();
+        TestUnsubscribe();
+        TestTopicManagement();
+        TestPerformance();
 
         cout << "\n========================================" << endl;
         cout << "    所有测试完成！" << endl;
