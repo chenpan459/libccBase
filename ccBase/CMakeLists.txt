@@ -10,12 +10,14 @@ set (CMAKE_CXX_FLAGS "--std=c++17")
 
 include_directories(${CMAKE_SOURCE_DIR}
                     ${CMAKE_SOURCE_DIR}/thread/include/
+                    ${CMAKE_SOURCE_DIR}/pubsub/include/
 #                    ${CMAKE_SOURCE_DIR}/timer/include/
 #                    ${CMAKE_SOURCE_DIR}/singleton/include/
 #                    ${CMAKE_SOURCE_DIR}/common/include/
                     )
 
 add_subdirectory(thread)
+add_subdirectory(pubsub)
 #add_subdirectory(singleton)
 #add_executable(test_wzq test.cc)
 #target_link_libraries(test_wzq pthread)
